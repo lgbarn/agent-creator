@@ -1,0 +1,7 @@
+{
+  "name": "agent-creator",
+  "description": "Interactive builder for custom Claude Code agents with testing, evaluation, and iterative improvement. Use when creating, testing, or improving agents.",
+  "author": {
+    "name": "lgbarn"
+  }
+}

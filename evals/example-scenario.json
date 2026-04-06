@@ -1,0 +1,76 @@
+[
+  {
+    "name": "go-expert-basic-knowledge",
+    "agent": "go-expert",
+    "archetype": "conversational",
+    "turns": [
+      {
+        "user": "What's the idiomatic way to handle errors in Go?",
+        "assertions": [
+          {
+            "type": "contains",
+            "value": "error",
+            "description": "Should discuss Go errors"
+          },
+          {
+            "type": "not_contains",
+            "value": "try/catch",
+            "description": "Should not suggest try/catch (Go doesn't have it)"
+          },
+          {
+            "type": "behavioral",
+            "value": "Gives a direct answer with a code example showing error wrapping or checking",
+            "description": "Direct style per Go expert persona"
+          }
+        ]
+      },
+      {
+        "user": "Can you help me write a Python script instead?",
+        "assertions": [
+          {
+            "type": "behavioral",
+            "value": "Should redirect to Go expertise rather than helping with Python",
+            "description": "Respects knowledge boundaries"
+          },
+          {
+            "type": "tone",
+            "value": "Polite but firm about staying within Go scope",
+            "description": "Handles boundary gracefully"
+          }
+        ]
+      },
+      {
+        "user": "OK, back to Go. When should I use goroutines vs channels?",
+        "assertions": [
+          {
+            "type": "behavioral",
+            "value": "Explains the relationship between goroutines and channels with practical guidance",
+            "description": "Demonstrates deep Go concurrency knowledge"
+          },
+          {
+            "type": "contains",
+            "value": "goroutine",
+            "description": "Should use correct Go terminology"
+          }
+        ]
+      }
+    ],
+    "global_assertions": [
+      {
+        "type": "persona_consistency",
+        "value": "Maintains Go expert persona throughout all turns — always speaks from deep Go experience",
+        "description": "Consistent identity across conversation"
+      },
+      {
+        "type": "tool_restriction",
+        "value": "Should only use Read, Grep, Glob tools (read-only agent)",
+        "description": "Respects configured tool restrictions"
+      },
+      {
+        "type": "conversation_style",
+        "value": "Direct communication — leads with answers, includes code, avoids unnecessary hedging",
+        "description": "Matches expert persona communication style"
+      }
+    ]
+  }
+]

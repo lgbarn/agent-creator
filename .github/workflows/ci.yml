@@ -52,10 +52,12 @@ jobs:
           print(f'Validated {len(scenarios)} scenario(s)')
           "
 
-      - name: Test utils module imports
+      - name: Test module imports
         run: |
           cd $GITHUB_WORKSPACE
           python -c "from scripts.utils import parse_agent_md, find_agent_file, extract_xml_sections, word_count; print('utils: OK')"
+          python -c "from scripts.run_trigger_eval import run_trigger_eval, find_project_root; print('run_trigger_eval: OK')"
+          python -c "from scripts.run_loop import split_scenarios; print('run_loop: OK')"
 
       - name: Test validator against sample agent
         run: |

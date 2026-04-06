@@ -5,18 +5,97 @@ Runs test scenarios against an agent, grades the results, uses Claude to
 improve the system prompt based on failures, and repeats until passing
 or max iterations reached.
 
+Supports:
+- Train/test split to prevent overfitting
+- Baseline runs (original agent alongside improved version) for comparison
+
 Usage:
     python scripts/run_loop.py --agent <path> --scenarios <path> --max-iterations 5 --model sonnet
 """
 
 import argparse
 import json
+import random
 import shutil
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from scripts.utils import parse_agent_md
+
+
+def split_scenarios(
+    scenarios: list[dict], holdout: float, seed: int = 42
+) -> tuple[list[dict], list[dict]]:
+    """Split scenarios into train and test sets.
+
+    Keeps at least 1 scenario in each set when possible.
+    """
+    if holdout <= 0 or len(scenarios) < 2:
+        return scenarios, []
+
+    rng = random.Random(seed)
+    shuffled = list(scenarios)
+    rng.shuffle(shuffled)
+
+    n_test = max(1, int(len(shuffled) * holdout))
+    test_set = shuffled[:n_test]
+    train_set = shuffled[n_test:]
+
+    # Ensure train set is never empty
+    if not train_set:
+        train_set = [test_set.pop(0)]
+
+    return train_set, test_set
+
+
+def _collect_assertion_stats(all_results: list[dict]) -> dict:
+    """Collect pass/fail/deferred counts from scenario results."""
+    total_passed = 0
+    total_failed = 0
+    total_deferred = 0
+
+    for result in all_results:
+        for tr in result.get("turn_results", []):
+            for a in tr.get("assertions", []):
+                if a["passed"] is True:
+                    total_passed += 1
+                elif a["passed"] is False:
+                    total_failed += 1
+                else:
+                    total_deferred += 1
+
+    total = total_passed + total_failed
+    return {
+        "passed": total_passed,
+        "failed": total_failed,
+        "deferred": total_deferred,
+        "total": total,
+        "pass_rate": total_passed / total if total > 0 else 0.0,
+    }
+
+
+def _run_scenarios(
+    scenarios: list[dict],
+    output_dir: Path,
+    timeout: int,
+    model: str | None,
+) -> list[dict]:
+    """Run a list of scenarios and return results."""
+    from scripts.run_agent_test import run_scenario
+
+    results = []
+    for i, scenario in enumerate(scenarios):
+        scenario_name = scenario.get("name", f"scenario-{i}")
+        scenario_dir = str(output_dir / scenario_name)
+        result = run_scenario(
+            scenario,
+            output_dir=scenario_dir,
+            timeout=timeout,
+            model=model,
+        )
+        results.append(result)
+    return results
 
 
 def run_loop(
@@ -28,29 +107,69 @@ def run_loop(
     timeout: int = 120,
     verbose: bool = False,
     mode: str = "behavior",
+    holdout: float = 0.0,
+    run_baseline: bool = True,
 ) -> dict:
     """Run the iterative test-improve cycle.
 
-    This function orchestrates the loop but delegates to external scripts
-    for each step, making it suitable for both direct Python usage and
-    CLI invocation where subagents handle grading.
+    Args:
+        holdout: Fraction of scenarios to hold out for testing (0 to disable).
+            Prevents overfitting by evaluating improvements on unseen scenarios.
+        run_baseline: If True, run the original agent on the same scenarios
+            each iteration for comparison.
 
     Returns dict with iteration history and best result.
     """
-    from scripts.run_agent_test import load_scenarios, run_scenario
+    from scripts.run_agent_test import load_scenarios
 
     agent_data = parse_agent_md(Path(agent_path))
-    scenarios = load_scenarios(scenarios_path)
+    all_scenarios = load_scenarios(scenarios_path)
     out = Path(output_dir)
     out.mkdir(parents=True, exist_ok=True)
+
+    # Train/test split
+    if holdout > 0:
+        train_scenarios, test_scenarios = split_scenarios(all_scenarios, holdout)
+        if verbose:
+            print(
+                f"Split: {len(train_scenarios)} train, {len(test_scenarios)} test "
+                f"(holdout={holdout})"
+            )
+    else:
+        train_scenarios = all_scenarios
+        test_scenarios = []
 
     history: list[dict] = []
     best_iteration: dict | None = None
     best_pass_rate = -1.0
 
-    # Save original agent for reference
+    # Save original agent for baseline runs
     original_path = out / "original_agent.md"
     shutil.copy2(agent_path, original_path)
+
+    # Run baseline once if enabled (original agent on train scenarios)
+    baseline_stats: dict | None = None
+    if run_baseline:
+        if verbose:
+            print(f"\n{'=' * 60}")
+            print("Baseline: running original agent")
+            print(f"{'=' * 60}")
+
+        baseline_dir = out / "baseline"
+        baseline_results = _run_scenarios(train_scenarios, baseline_dir, timeout, model)
+        baseline_stats = _collect_assertion_stats(baseline_results)
+
+        if verbose:
+            bs = baseline_stats
+            print(
+                f"  Baseline: {bs['passed']}/{bs['total']} passed "
+                f"({bs['pass_rate']:.0%})"
+            )
+
+        # Save baseline summary
+        (baseline_dir / "summary.json").write_text(
+            json.dumps({"config": "baseline", **baseline_stats}, indent=2)
+        )
 
     current_agent_path = agent_path
 
@@ -63,80 +182,76 @@ def run_loop(
             print(f"Iteration {iteration}/{max_iterations}")
             print(f"{'=' * 60}")
 
-        # Step 1: Run all test scenarios
-        all_results = []
-        for i, scenario in enumerate(scenarios):
-            scenario_name = scenario.get("name", f"scenario-{i}")
-            scenario_dir = str(iter_dir / scenario_name)
-
-            result = run_scenario(
-                scenario,
-                output_dir=scenario_dir,
-                timeout=timeout,
-                model=model,
-            )
-            all_results.append(result)
-
-        # Step 2: Collect programmatic assertion results
-        total_passed = 0
-        total_failed = 0
-        total_deferred = 0
-
-        for result in all_results:
-            for tr in result.get("turn_results", []):
-                for a in tr.get("assertions", []):
-                    if a["passed"] is True:
-                        total_passed += 1
-                    elif a["passed"] is False:
-                        total_failed += 1
-                    else:
-                        total_deferred += 1
-
-        total = total_passed + total_failed
-        pass_rate = total_passed / total if total > 0 else 0.0
-
-        iter_record = {
-            "iteration": iteration,
-            "agent_path": current_agent_path,
-            "passed": total_passed,
-            "failed": total_failed,
-            "deferred": total_deferred,
-            "total": total,
-            "pass_rate": pass_rate,
-        }
-        history.append(iter_record)
+        # Step 1: Run train scenarios with current agent
+        train_dir = iter_dir / "train"
+        train_results = _run_scenarios(train_scenarios, train_dir, timeout, model)
+        train_stats = _collect_assertion_stats(train_results)
 
         if verbose:
-            print(f"  Programmatic: {total_passed}/{total} passed ({pass_rate:.0%})")
-            print(f"  Deferred to grader: {total_deferred}")
+            ts = train_stats
+            print(
+                f"  Train: {ts['passed']}/{ts['total']} passed ({ts['pass_rate']:.0%})"
+            )
 
-        # Track best iteration
-        if pass_rate > best_pass_rate:
-            best_pass_rate = pass_rate
+        # Step 2: Run test scenarios (if holdout > 0)
+        test_stats: dict | None = None
+        if test_scenarios:
+            test_dir = iter_dir / "test"
+            test_results = _run_scenarios(test_scenarios, test_dir, timeout, model)
+            test_stats = _collect_assertion_stats(test_results)
+
+            if verbose:
+                tes = test_stats
+                print(
+                    f"  Test:  {tes['passed']}/{tes['total']} passed "
+                    f"({tes['pass_rate']:.0%})"
+                )
+
+        # Step 3: Run baseline comparison (original agent on same train scenarios)
+        iter_baseline_stats: dict | None = None
+        if run_baseline and iteration > 1:
+            # Reuse the initial baseline for train scenarios (deterministic split)
+            iter_baseline_stats = baseline_stats
+
+        # Build iteration record
+        iter_record: dict = {
+            "iteration": iteration,
+            "agent_path": current_agent_path,
+            "train": train_stats,
+            "test": test_stats,
+            "baseline": iter_baseline_stats,
+            # Convenience fields
+            "passed": train_stats["passed"],
+            "failed": train_stats["failed"],
+            "total": train_stats["total"],
+            "pass_rate": train_stats["pass_rate"],
+        }
+
+        # Compute delta vs baseline
+        if baseline_stats and baseline_stats["total"] > 0:
+            delta = train_stats["pass_rate"] - baseline_stats["pass_rate"]
+            iter_record["delta_vs_baseline"] = round(delta, 3)
+            if verbose:
+                sign = "+" if delta >= 0 else ""
+                print(f"  Delta vs baseline: {sign}{delta:.0%}")
+
+        history.append(iter_record)
+
+        # Track best by test score if available, else train score
+        score = test_stats["pass_rate"] if test_stats else train_stats["pass_rate"]
+        if score > best_pass_rate:
+            best_pass_rate = score
             best_iteration = iter_record
-            # Save best agent version
             shutil.copy2(current_agent_path, out / "best_agent.md")
 
         # Save iteration summary
-        summary_path = iter_dir / "summary.json"
-        summary_path.write_text(
-            json.dumps(
-                {
-                    **iter_record,
-                    "scenarios": [
-                        r.get("scenario_name", f"scenario-{i}")
-                        for i, r in enumerate(all_results)
-                    ],
-                },
-                indent=2,
-            )
-        )
+        (iter_dir / "summary.json").write_text(json.dumps(iter_record, indent=2))
 
-        # Check if all programmatic assertions pass
-        if total_failed == 0 and total > 0:
+        # Check if all train assertions pass
+        if train_stats["failed"] == 0 and train_stats["total"] > 0:
             if verbose:
                 print(
-                    f"\nAll programmatic assertions pass! Stopping at iteration {iteration}."
+                    f"\nAll train assertions pass! Stopping at iteration {iteration}."
                 )
             iter_record["exit_reason"] = "all_passed"
             break
@@ -147,10 +262,7 @@ def run_loop(
             iter_record["exit_reason"] = "max_iterations"
             break
 
-        # Step 3: Improve the agent
-        # Note: Full behavioral grading (via behavior-grader agent) should be
-        # done by the caller (SKILL.md workflow or manual invocation).
-        # This loop handles programmatic improvements.
+        # Step 4: Improve the agent
         if verbose:
             print("\n  Improving agent prompt...")
 
@@ -160,7 +272,7 @@ def run_loop(
 
             client = anthropic.Anthropic()
 
-            # Build a simplified grading result from programmatic assertions
+            # Build grading result from programmatic assertions
             grading = {
                 "turn_results": [
                     {
@@ -172,7 +284,7 @@ def run_loop(
                             if a["passed"] is not None
                         ],
                     }
-                    for result in all_results
+                    for result in train_results
                     for i, tr in enumerate(result.get("turn_results", []))
                 ],
                 "global_results": [],
@@ -185,7 +297,10 @@ def run_loop(
                 agent_name=agent_data["name"],
                 agent_content=agent_data["raw"],
                 grading_results=grading,
-                history=history,
+                history=[
+                    {k: v for k, v in h.items() if not k.startswith("test")}
+                    for h in history
+                ],
                 model=model or "claude-sonnet-4-6",
                 mode=mode,
                 log_dir=iter_dir / "logs",
@@ -193,7 +308,6 @@ def run_loop(
             )
 
             if improvement.get("improved_content"):
-                # Write improved agent
                 improved_path = iter_dir / "improved_agent.md"
                 improved_path.write_text(improvement["improved_content"])
                 current_agent_path = str(improved_path)
@@ -211,14 +325,18 @@ def run_loop(
             break
 
     # Final summary
-    output = {
+    output: dict = {
         "original_agent": str(original_path),
-        "best_agent": str(out / "best_agent.md")
-        if best_iteration
-        else str(original_path),
+        "best_agent": (
+            str(out / "best_agent.md") if best_iteration else str(original_path)
+        ),
         "best_pass_rate": best_pass_rate,
         "best_iteration": best_iteration,
         "iterations_run": len(history),
+        "holdout": holdout,
+        "train_scenarios": len(train_scenarios),
+        "test_scenarios": len(test_scenarios),
+        "baseline": baseline_stats,
         "history": history,
     }
 
@@ -226,10 +344,10 @@ def run_loop(
     output_path.write_text(json.dumps(output, indent=2))
 
     if verbose:
-        print(
-            f"\nBest: iteration {best_iteration['iteration'] if best_iteration else 'N/A'} "
-            f"({best_pass_rate:.0%} pass rate)"
-        )
+        best_iter_num = best_iteration["iteration"] if best_iteration else "N/A"
+        print(f"\nBest: iteration {best_iter_num} ({best_pass_rate:.0%} pass rate)")
+        if baseline_stats:
+            print(f"Baseline: {baseline_stats['pass_rate']:.0%}")
         print(f"Results: {output_path}")
 
     return output
@@ -259,6 +377,17 @@ def main():
         choices=["behavior", "description"],
         help="What to improve: system prompt or description",
     )
+    parser.add_argument(
+        "--holdout",
+        type=float,
+        default=0.0,
+        help="Fraction of scenarios to hold out for testing (0 to disable)",
+    )
+    parser.add_argument(
+        "--no-baseline",
+        action="store_true",
+        help="Skip baseline runs (original agent comparison)",
+    )
     parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args()
 
@@ -271,6 +400,8 @@ def main():
         timeout=args.timeout,
         verbose=args.verbose,
         mode=args.mode,
+        holdout=args.holdout,
+        run_baseline=not args.no_baseline,
     )
 
     print(json.dumps(result, indent=2))

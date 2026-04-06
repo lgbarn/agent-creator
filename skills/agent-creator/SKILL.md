@@ -213,17 +213,41 @@ python <plugin-root>/scripts/run_loop.py \
   --scenarios <scenarios.json> \
   --output-dir <workspace>/ \
   --max-iterations 5 \
+  --holdout 0.3 \
   --model sonnet \
   --verbose
 ```
 
 This runs the test-improve cycle automatically: test → identify failures → use Claude to improve the prompt → re-test → repeat. It saves the best-performing version.
 
+Key flags:
+- `--holdout 0.3`: Hold out 30% of scenarios as a test set. The improvement loop only sees train results, preventing overfitting to specific test cases. Best version is selected by test score.
+- `--no-baseline`: Skip running the original agent for comparison (on by default). Baseline runs give you a delta showing how much each iteration improved over the original.
+
 **For deeper analysis**, use the evaluation agents:
 - **agent-comparator** (`agents/agent-comparator.md`): Blind A/B comparison of two agent versions on the same scenarios
 - **agent-analyzer** (`agents/agent-analyzer.md`): Post-hoc analysis of why one version performed better, with prioritized improvement suggestions
 
-**For description optimization** (improving auto-triggering accuracy): The improvement loop supports `--mode description` to iteratively optimize the description field instead of the system prompt.
+**For trigger testing** (agents using `<example>` blocks for auto-delegation):
+```bash
+python <plugin-root>/scripts/run_trigger_eval.py \
+  --agent <path-to-agent.md> \
+  --eval-set <trigger-queries.json> \
+  --runs-per-query 3 \
+  --verbose
+```
+
+The trigger eval set is a JSON array of queries with `should_trigger` flags:
+```json
+[
+  {"query": "can you review this auth flow for security issues?", "should_trigger": true},
+  {"query": "write a fibonacci function in Python", "should_trigger": false}
+]
+```
+
+This tests whether Claude correctly delegates to the agent for matching queries and avoids delegating for non-matching ones. Only relevant for agents that use description-based auto-triggering — agents invoked solely via `claude --agent` don't need this.
+
+**For description optimization**: The improvement loop supports `--mode description` to iteratively optimize the description field instead of the system prompt.
 
 Keep iterating until:
 - The user is happy with the agent's behavior
@@ -248,7 +272,8 @@ All scripts are in `<plugin-root>/scripts/`:
 |--------|---------|-------|
 | `validate_agent.py` | Validate agent .md file structure and fields | `python scripts/validate_agent.py <agent.md>` |
 | `run_agent_test.py` | Run test scenarios and capture transcripts | `python scripts/run_agent_test.py --agent <name> --scenario <file> --output-dir <dir>` |
-| `run_loop.py` | Iterative test-improve cycle | `python scripts/run_loop.py --agent <path> --scenarios <file> --output-dir <dir>` |
+| `run_loop.py` | Iterative test-improve cycle with train/test split + baseline | `python scripts/run_loop.py --agent <path> --scenarios <file> --output-dir <dir> --holdout 0.3` |
+| `run_trigger_eval.py` | Test agent description triggering accuracy | `python scripts/run_trigger_eval.py --agent <path> --eval-set <file>` |
 | `improve_prompt.py` | Improve system prompt using Claude + extended thinking | `python scripts/improve_prompt.py --agent <path> --grading <file> --model <model>` |
 | `package_agent.py` | Package agent into distributable .agent archive | `python scripts/package_agent.py <agent.md> [output-dir]` |
 | `utils.py` | Shared parsing utilities (imported by other scripts) | — |

@@ -17,7 +17,7 @@ from pathlib import Path
 import anthropic
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from scripts.utils import parse_agent_md, extract_xml_sections
+from scripts.utils import parse_agent_md
 
 
 def improve_prompt(
@@ -56,13 +56,27 @@ def improve_prompt(
 
     if mode == "behavior":
         return _improve_system_prompt(
-            client, agent_name, agent_content, all_failures, all_notes,
-            history, model, log_dir, iteration,
+            client,
+            agent_name,
+            agent_content,
+            all_failures,
+            all_notes,
+            history,
+            model,
+            log_dir,
+            iteration,
         )
     else:
         return _improve_description(
-            client, agent_name, agent_content, all_failures, all_notes,
-            history, model, log_dir, iteration,
+            client,
+            agent_name,
+            agent_content,
+            all_failures,
+            all_notes,
+            history,
+            model,
+            log_dir,
+            iteration,
         )
 
 
@@ -73,30 +87,41 @@ def _extract_failures(grading: dict) -> list[dict]:
     for tr in grading.get("turn_results", []):
         for a in tr.get("assertions", []):
             if a.get("passed") is False:
-                failures.append({
-                    "turn": tr.get("turn"),
-                    "user_message": tr.get("user_message", ""),
-                    "assertion": a.get("text", ""),
-                    "type": a.get("type", ""),
-                    "evidence": a.get("evidence", ""),
-                })
+                failures.append(
+                    {
+                        "turn": tr.get("turn"),
+                        "user_message": tr.get("user_message", ""),
+                        "assertion": a.get("text", ""),
+                        "type": a.get("type", ""),
+                        "evidence": a.get("evidence", ""),
+                    }
+                )
 
     for a in grading.get("global_results", []):
         if a.get("passed") is False:
-            failures.append({
-                "turn": "global",
-                "user_message": "",
-                "assertion": a.get("text", ""),
-                "type": a.get("type", ""),
-                "evidence": a.get("evidence", ""),
-            })
+            failures.append(
+                {
+                    "turn": "global",
+                    "user_message": "",
+                    "assertion": a.get("text", ""),
+                    "type": a.get("type", ""),
+                    "evidence": a.get("evidence", ""),
+                }
+            )
 
     return failures
 
 
 def _improve_system_prompt(
-    client, agent_name, agent_content, failures, notes,
-    history, model, log_dir, iteration,
+    client,
+    agent_name,
+    agent_content,
+    failures,
+    notes,
+    history,
+    model,
+    log_dir,
+    iteration,
 ) -> dict:
     """Improve the agent's system prompt based on behavioral failures."""
 
@@ -112,9 +137,9 @@ The agent was tested against behavioral scenarios and some assertions failed:
 <failures>
 """
     for f in failures:
-        turn_info = f"Turn {f['turn']}" if f['turn'] != 'global' else "Global"
+        turn_info = f"Turn {f['turn']}" if f["turn"] != "global" else "Global"
         prompt += f"[{turn_info}] {f['type']}: {f['assertion']}\n"
-        if f['user_message']:
+        if f["user_message"]:
             prompt += f"  User said: {f['user_message']}\n"
         prompt += f"  Evidence: {f['evidence']}\n\n"
 
@@ -179,13 +204,18 @@ Also explain your changes briefly in <reasoning> tags."""
     if log_dir:
         log_dir.mkdir(parents=True, exist_ok=True)
         log_file = log_dir / f"improve_iter_{iteration or 'unknown'}.json"
-        log_file.write_text(json.dumps({
-            "iteration": iteration,
-            "prompt": prompt,
-            "thinking": thinking_text,
-            "response": text,
-            "reasoning": reasoning,
-        }, indent=2))
+        log_file.write_text(
+            json.dumps(
+                {
+                    "iteration": iteration,
+                    "prompt": prompt,
+                    "thinking": thinking_text,
+                    "response": text,
+                    "reasoning": reasoning,
+                },
+                indent=2,
+            )
+        )
 
     return {
         "improved_content": improved,
@@ -194,8 +224,15 @@ Also explain your changes briefly in <reasoning> tags."""
 
 
 def _improve_description(
-    client, agent_name, agent_content, failures, notes,
-    history, model, log_dir, iteration,
+    client,
+    agent_name,
+    agent_content,
+    failures,
+    notes,
+    history,
+    model,
+    log_dir,
+    iteration,
 ) -> dict:
     """Improve the agent's description for better triggering."""
 
@@ -243,11 +280,17 @@ Respond with the improved description in <new_description> tags."""
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Improve agent prompt based on test results")
+    parser = argparse.ArgumentParser(
+        description="Improve agent prompt based on test results"
+    )
     parser.add_argument("--agent", required=True, help="Path to agent .md file")
     parser.add_argument("--grading", required=True, help="Path to grading results JSON")
-    parser.add_argument("--mode", default="behavior", choices=["behavior", "description"],
-                       help="What to improve: system prompt or description")
+    parser.add_argument(
+        "--mode",
+        default="behavior",
+        choices=["behavior", "description"],
+        help="What to improve: system prompt or description",
+    )
     parser.add_argument("--model", required=True, help="Model for improvement")
     parser.add_argument("--history", default=None, help="Path to history JSON")
     parser.add_argument("--verbose", action="store_true")

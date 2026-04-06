@@ -1,0 +1,127 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  validate:
+    name: Validate & Test
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.12", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: |
+          pip install pyyaml ruff
+
+      - name: Lint with ruff
+        run: |
+          ruff check scripts/
+          ruff format --check scripts/
+
+      - name: Validate plugin structure
+        run: |
+          test -f .claude-plugin/plugin.json
+          test -f skills/agent-creator/SKILL.md
+          python -c "import json; json.load(open('.claude-plugin/plugin.json'))"
+
+      - name: Validate example scenario schema
+        run: |
+          python -c "
+          import json
+          scenarios = json.load(open('evals/example-scenario.json'))
+          assert isinstance(scenarios, list), 'Must be a list'
+          for s in scenarios:
+              assert 'name' in s, 'Missing name'
+              assert 'agent' in s, 'Missing agent'
+              assert 'turns' in s, 'Missing turns'
+              for t in s['turns']:
+                  assert 'user' in t, 'Missing user message in turn'
+          print(f'Validated {len(scenarios)} scenario(s)')
+          "
+
+      - name: Test utils module imports
+        run: |
+          cd $GITHUB_WORKSPACE
+          python -c "from scripts.utils import parse_agent_md, find_agent_file, extract_xml_sections, word_count; print('utils: OK')"
+
+      - name: Test validator against sample agent
+        run: |
+          cat > /tmp/test-agent.md << 'AGENT'
+          ---
+          name: test-agent
+          description: A test agent for CI validation
+          model: sonnet
+          color: blue
+          tools: Read, Grep, Glob
+          ---
+
+          <role>
+          You are a test agent used for CI validation.
+          </role>
+
+          <knowledge>
+          You know about testing and validation.
+          </knowledge>
+
+          <style>
+          Direct and concise.
+          </style>
+
+          <rules>
+          - Only used in CI
+          </rules>
+          AGENT
+          python scripts/validate_agent.py /tmp/test-agent.md
+
+      - name: Test validator catches errors
+        run: |
+          # Missing required fields
+          cat > /tmp/bad-agent.md << 'AGENT'
+          ---
+          name: bad
+          ---
+          No description field
+          AGENT
+          python scripts/validate_agent.py /tmp/bad-agent.md && exit 1 || echo "Correctly rejected invalid agent"
+
+          # Invalid model
+          cat > /tmp/bad-model.md << 'AGENT'
+          ---
+          name: bad-model-agent
+          description: Agent with invalid model
+          model: gpt-4
+          ---
+          Test
+          AGENT
+          python scripts/validate_agent.py /tmp/bad-model.md && exit 1 || echo "Correctly rejected invalid model"
+
+      - name: Test packaging
+        run: |
+          cat > /tmp/packagable-agent.md << 'AGENT'
+          ---
+          name: packagable-agent
+          description: An agent that can be packaged for distribution testing
+          model: sonnet
+          color: green
+          ---
+
+          <role>
+          A simple agent for testing the packaging script.
+          </role>
+          AGENT
+          python scripts/package_agent.py /tmp/packagable-agent.md /tmp/
+          test -f /tmp/packagable-agent.agent
+          echo "Package created successfully"

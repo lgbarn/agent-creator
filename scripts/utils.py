@@ -32,7 +32,7 @@ def parse_agent_md(agent_path: Path) -> dict[str, Any]:
         raise ValueError(f"{path.name} missing frontmatter (no closing ---)")
 
     frontmatter = _parse_yaml_frontmatter(lines[1:end_idx])
-    body = "\n".join(lines[end_idx + 1:]).strip()
+    body = "\n".join(lines[end_idx + 1 :]).strip()
 
     return {
         "name": frontmatter.get("name", ""),
@@ -51,6 +51,7 @@ def _parse_yaml_frontmatter(lines: list[str]) -> dict[str, Any]:
     """
     try:
         import yaml
+
         text = "\n".join(lines)
         result = yaml.safe_load(text)
         if isinstance(result, dict):
@@ -69,7 +70,7 @@ def _parse_yaml_frontmatter(lines: list[str]) -> dict[str, Any]:
             i += 1
             continue
 
-        match = re.match(r'^(\w[\w-]*)\s*:\s*(.*)', line)
+        match = re.match(r"^(\w[\w-]*)\s*:\s*(.*)", line)
         if match:
             key = match.group(1)
             value = match.group(2).strip()
@@ -77,7 +78,9 @@ def _parse_yaml_frontmatter(lines: list[str]) -> dict[str, Any]:
             if value in (">", "|", ">-", "|-"):
                 continuation: list[str] = []
                 i += 1
-                while i < len(lines) and (lines[i].startswith("  ") or lines[i].startswith("\t")):
+                while i < len(lines) and (
+                    lines[i].startswith("  ") or lines[i].startswith("\t")
+                ):
                     continuation.append(lines[i].strip())
                     i += 1
                 frontmatter[key] = " ".join(continuation)

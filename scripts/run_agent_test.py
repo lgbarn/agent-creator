@@ -32,7 +32,9 @@ def load_scenarios(scenario_path: str) -> list[dict]:
     return data
 
 
-def run_turn(agent: str, prompt: str, timeout: int = 120, model: str | None = None) -> dict:
+def run_turn(
+    agent: str, prompt: str, timeout: int = 120, model: str | None = None
+) -> dict:
     """Run a single turn against an agent via claude CLI.
 
     Returns dict with:
@@ -89,7 +91,9 @@ def run_turn(agent: str, prompt: str, timeout: int = 120, model: str | None = No
     }
 
 
-def check_programmatic_assertions(response: str, tool_calls: list[str], assertions: list[dict]) -> list[dict]:
+def check_programmatic_assertions(
+    response: str, tool_calls: list[str], assertions: list[dict]
+) -> list[dict]:
     """Check programmatic assertions (contains, not_contains, regex, tool_usage).
 
     Returns list of assertion results with passed/evidence fields added.
@@ -103,73 +107,89 @@ def check_programmatic_assertions(response: str, tool_calls: list[str], assertio
 
         if atype == "contains":
             found = value.lower() in response.lower()
-            results.append({
-                "text": desc,
-                "type": atype,
-                "passed": found,
-                "evidence": f"'{value}' {'found' if found else 'not found'} in response",
-            })
+            results.append(
+                {
+                    "text": desc,
+                    "type": atype,
+                    "passed": found,
+                    "evidence": f"'{value}' {'found' if found else 'not found'} in response",
+                }
+            )
 
         elif atype == "not_contains":
             found = value.lower() in response.lower()
-            results.append({
-                "text": desc,
-                "type": atype,
-                "passed": not found,
-                "evidence": f"'{value}' {'found (FAIL)' if found else 'not found (PASS)'} in response",
-            })
+            results.append(
+                {
+                    "text": desc,
+                    "type": atype,
+                    "passed": not found,
+                    "evidence": f"'{value}' {'found (FAIL)' if found else 'not found (PASS)'} in response",
+                }
+            )
 
         elif atype == "regex":
             match = re.search(value, response, re.IGNORECASE)
-            results.append({
-                "text": desc,
-                "type": atype,
-                "passed": match is not None,
-                "evidence": f"Pattern '{value}' {'matched' if match else 'did not match'}",
-            })
+            results.append(
+                {
+                    "text": desc,
+                    "type": atype,
+                    "passed": match is not None,
+                    "evidence": f"Pattern '{value}' {'matched' if match else 'did not match'}",
+                }
+            )
 
         elif atype == "tool_usage":
             value_lower = value.lower()
             if "should not" in value_lower or "should not" in value_lower:
                 # Extract tool name after "should NOT use"
-                tool_match = re.search(r'should\s+not\s+use\s+(\w+)', value, re.IGNORECASE)
+                tool_match = re.search(
+                    r"should\s+not\s+use\s+(\w+)", value, re.IGNORECASE
+                )
                 if tool_match:
                     tool_name = tool_match.group(1)
                     used = any(t.lower() == tool_name.lower() for t in tool_calls)
-                    results.append({
-                        "text": desc,
-                        "type": atype,
-                        "passed": not used,
-                        "evidence": f"Tool '{tool_name}' {'was used (FAIL)' if used else 'was not used (PASS)'}",
-                    })
+                    results.append(
+                        {
+                            "text": desc,
+                            "type": atype,
+                            "passed": not used,
+                            "evidence": f"Tool '{tool_name}' {'was used (FAIL)' if used else 'was not used (PASS)'}",
+                        }
+                    )
             elif "should use" in value_lower:
-                tool_match = re.search(r'should\s+use\s+(\w+)', value, re.IGNORECASE)
+                tool_match = re.search(r"should\s+use\s+(\w+)", value, re.IGNORECASE)
                 if tool_match:
                     tool_name = tool_match.group(1)
                     used = any(t.lower() == tool_name.lower() for t in tool_calls)
-                    results.append({
-                        "text": desc,
-                        "type": atype,
-                        "passed": used,
-                        "evidence": f"Tool '{tool_name}' {'was used (PASS)' if used else 'was not used (FAIL)'}",
-                    })
+                    results.append(
+                        {
+                            "text": desc,
+                            "type": atype,
+                            "passed": used,
+                            "evidence": f"Tool '{tool_name}' {'was used (PASS)' if used else 'was not used (FAIL)'}",
+                        }
+                    )
             else:
                 # Defer to grader for complex tool_usage assertions
-                results.append({
+                results.append(
+                    {
+                        "text": desc,
+                        "type": atype,
+                        "passed": None,  # Deferred to grader
+                        "evidence": "Deferred to behavior-grader for evaluation",
+                    }
+                )
+
+        else:
+            # behavioral, tone — deferred to grader agent
+            results.append(
+                {
                     "text": desc,
                     "type": atype,
                     "passed": None,  # Deferred to grader
                     "evidence": "Deferred to behavior-grader for evaluation",
-                })
-
-        else:
-            # behavioral, tone — deferred to grader agent
-            results.append({
-                "text": desc,
-                "type": atype,
-                "passed": None,  # Deferred to grader
-                "evidence": "Deferred to behavior-grader for evaluation",
-            })
+                }
+            )
 
     return results
 
@@ -201,7 +221,9 @@ def build_context_prompt(scenario: dict, turn_idx: int, history: list[dict]) -> 
     return "\n".join(context_parts)
 
 
-def run_scenario(scenario: dict, output_dir: str, timeout: int = 120, model: str | None = None) -> dict:
+def run_scenario(
+    scenario: dict, output_dir: str, timeout: int = 120, model: str | None = None
+) -> dict:
     """Run a complete test scenario against an agent.
 
     Returns the full test result including transcript and assertion results.
@@ -260,7 +282,7 @@ def run_scenario(scenario: dict, output_dir: str, timeout: int = 120, model: str
         transcript_lines.append(f"## Turn {tr['turn']}")
         transcript_lines.append(f"**User:** {tr['user_message']}")
         transcript_lines.append("")
-        transcript_lines.append(f"**Agent Response:**")
+        transcript_lines.append("**Agent Response:**")
         transcript_lines.append(tr["response"])
         if tr["tool_calls"]:
             transcript_lines.append(f"\n**Tools Used:** {', '.join(tr['tool_calls'])}")
@@ -303,14 +325,12 @@ def run_scenario(scenario: dict, output_dir: str, timeout: int = 120, model: str
 
     # Summary
     programmatic_results = [
-        a for tr in turn_results for a in tr["assertions"]
-        if a["passed"] is not None
+        a for tr in turn_results for a in tr["assertions"] if a["passed"] is not None
     ]
     passed = sum(1 for a in programmatic_results if a["passed"])
     failed = sum(1 for a in programmatic_results if not a["passed"])
     deferred = sum(
-        1 for tr in turn_results for a in tr["assertions"]
-        if a["passed"] is None
+        1 for tr in turn_results for a in tr["assertions"] if a["passed"] is None
     )
 
     print(f"  Results: {passed} passed, {failed} failed, {deferred} deferred to grader")
@@ -323,8 +343,12 @@ def main():
     parser = argparse.ArgumentParser(description="Run agent test scenarios")
     parser.add_argument("--agent", required=True, help="Agent name or path to .md file")
     parser.add_argument("--scenario", required=True, help="Path to test scenario JSON")
-    parser.add_argument("--output-dir", required=True, help="Directory for output files")
-    parser.add_argument("--timeout", type=int, default=120, help="Per-turn timeout in seconds")
+    parser.add_argument(
+        "--output-dir", required=True, help="Directory for output files"
+    )
+    parser.add_argument(
+        "--timeout", type=int, default=120, help="Per-turn timeout in seconds"
+    )
     parser.add_argument("--model", default=None, help="Override model for the agent")
     args = parser.parse_args()
 

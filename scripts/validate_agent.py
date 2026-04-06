@@ -20,24 +20,57 @@ from scripts.utils import parse_agent_md, extract_xml_sections, word_count
 # Valid values for enum fields
 VALID_MODELS = {"inherit", "opus", "sonnet", "haiku"}
 VALID_COLORS = {"blue", "cyan", "green", "yellow", "red", "magenta"}
-VALID_PERMISSION_MODES = {"default", "acceptEdits", "auto", "dontAsk", "bypassPermissions", "plan"}
+VALID_PERMISSION_MODES = {
+    "default",
+    "acceptEdits",
+    "auto",
+    "dontAsk",
+    "bypassPermissions",
+    "plan",
+}
 VALID_MEMORY = {"user", "project", "local"}
 VALID_EFFORT = {"low", "medium", "high", "max"}
 
 # Known tool names (core tools available in Claude Code)
 KNOWN_TOOLS = {
-    "Read", "Write", "Edit", "Bash", "Glob", "Grep",
-    "WebFetch", "WebSearch", "Agent", "Skill",
-    "NotebookEdit", "NotebookRead",
-    "TaskCreate", "TaskUpdate", "TaskGet", "TaskList",
-    "SendMessage", "AskUserQuestion",
+    "Read",
+    "Write",
+    "Edit",
+    "Bash",
+    "Glob",
+    "Grep",
+    "WebFetch",
+    "WebSearch",
+    "Agent",
+    "Skill",
+    "NotebookEdit",
+    "NotebookRead",
+    "TaskCreate",
+    "TaskUpdate",
+    "TaskGet",
+    "TaskList",
+    "SendMessage",
+    "AskUserQuestion",
 }
 
 # All recognized frontmatter keys
 KNOWN_KEYS = {
-    "name", "description", "model", "color", "tools", "disallowedTools",
-    "maxTurns", "permissionMode", "memory", "skills", "mcpServers",
-    "hooks", "isolation", "initialPrompt", "background", "effort",
+    "name",
+    "description",
+    "model",
+    "color",
+    "tools",
+    "disallowedTools",
+    "maxTurns",
+    "permissionMode",
+    "memory",
+    "skills",
+    "mcpServers",
+    "hooks",
+    "isolation",
+    "initialPrompt",
+    "background",
+    "effort",
 }
 
 
@@ -76,9 +109,12 @@ def validate_agent(agent_path: str) -> tuple[bool, str, list[str]]:
     description = str(fm["description"]).strip()
 
     # Name validation: kebab-case, 3-50 chars
-    if not re.match(r'^[a-z0-9][a-z0-9-]*[a-z0-9]$', name) and len(name) > 2:
-        return False, f"Name '{name}' must be kebab-case (lowercase letters, digits, hyphens)"
-    if '--' in name:
+    if not re.match(r"^[a-z0-9][a-z0-9-]*[a-z0-9]$", name) and len(name) > 2:
+        return (
+            False,
+            f"Name '{name}' must be kebab-case (lowercase letters, digits, hyphens)",
+        )
+    if "--" in name:
         return False, f"Name '{name}' cannot contain consecutive hyphens"
     if len(name) < 3:
         return False, f"Name '{name}' is too short (minimum 3 characters)"
@@ -89,14 +125,20 @@ def validate_agent(agent_path: str) -> tuple[bool, str, list[str]]:
     if len(description) < 10:
         return False, f"Description is too short ({len(description)} chars, minimum 10)"
     if len(description) > 5000:
-        return False, f"Description is too long ({len(description)} chars, maximum 5000)"
+        return (
+            False,
+            f"Description is too long ({len(description)} chars, maximum 5000)",
+        )
 
     # Model validation
     model = fm.get("model")
     if model is not None:
         model_str = str(model)
         if model_str not in VALID_MODELS and not model_str.startswith("claude-"):
-            return False, f"Invalid model: '{model_str}'. Must be one of {VALID_MODELS} or a claude-* model ID"
+            return (
+                False,
+                f"Invalid model: '{model_str}'. Must be one of {VALID_MODELS} or a claude-* model ID",
+            )
 
     # Color validation
     color = fm.get("color")
@@ -118,12 +160,14 @@ def validate_agent(agent_path: str) -> tuple[bool, str, list[str]]:
                 if not tool:
                     continue
                 # Allow Agent(*) and Skill(*) patterns and MCP tool patterns
-                if re.match(r'^(Agent|Skill)\(.*\)$', tool):
+                if re.match(r"^(Agent|Skill)\(.*\)$", tool):
                     continue
                 if tool.startswith("mcp__"):
                     continue
                 if tool not in KNOWN_TOOLS:
-                    warnings.append(f"Unknown tool in '{field}': '{tool}' — verify this is a valid tool name")
+                    warnings.append(
+                        f"Unknown tool in '{field}': '{tool}' — verify this is a valid tool name"
+                    )
 
     # maxTurns validation
     max_turns = fm.get("maxTurns")
@@ -131,12 +175,17 @@ def validate_agent(agent_path: str) -> tuple[bool, str, list[str]]:
         if not isinstance(max_turns, int) or max_turns < 1:
             return False, f"maxTurns must be a positive integer, got: {max_turns}"
         if max_turns > 100:
-            warnings.append(f"maxTurns is {max_turns} — this is unusually high, verify this is intentional")
+            warnings.append(
+                f"maxTurns is {max_turns} — this is unusually high, verify this is intentional"
+            )
 
     # permissionMode validation
     perm = fm.get("permissionMode")
     if perm is not None and str(perm) not in VALID_PERMISSION_MODES:
-        return False, f"Invalid permissionMode: '{perm}'. Must be one of {VALID_PERMISSION_MODES}"
+        return (
+            False,
+            f"Invalid permissionMode: '{perm}'. Must be one of {VALID_PERMISSION_MODES}",
+        )
 
     # Memory validation
     mem = fm.get("memory")
@@ -168,36 +217,55 @@ def validate_agent(agent_path: str) -> tuple[bool, str, list[str]]:
         example_count = description.count("<example>")
         close_count = description.count("</example>")
         if example_count != close_count:
-            warnings.append(f"Mismatched <example> tags: {example_count} opening, {close_count} closing")
-        if "user:" not in description.lower() or "assistant:" not in description.lower():
-            warnings.append("Description <example> blocks should contain 'user:' and 'assistant:' entries")
+            warnings.append(
+                f"Mismatched <example> tags: {example_count} opening, {close_count} closing"
+            )
+        if (
+            "user:" not in description.lower()
+            or "assistant:" not in description.lower()
+        ):
+            warnings.append(
+                "Description <example> blocks should contain 'user:' and 'assistant:' entries"
+            )
 
     # System prompt structure checks
     sections = extract_xml_sections(body)
     is_task = max_turns is not None  # Task agents typically have maxTurns set
 
     if "role" not in sections:
-        warnings.append("System prompt missing <role> section — recommended for all agents")
+        warnings.append(
+            "System prompt missing <role> section — recommended for all agents"
+        )
 
     if is_task:
         if "instructions" not in sections:
             warnings.append("Task agent (maxTurns set) missing <instructions> section")
     else:
         if "knowledge" not in sections and "style" not in sections:
-            warnings.append("Conversational agent missing <knowledge> and/or <style> sections")
+            warnings.append(
+                "Conversational agent missing <knowledge> and/or <style> sections"
+            )
 
     # Prompt length checks
     wc = word_count(body)
     if is_task:
         if wc < 100:
-            warnings.append(f"System prompt is very short ({wc} words) — task agents typically need 300-1500 words")
+            warnings.append(
+                f"System prompt is very short ({wc} words) — task agents typically need 300-1500 words"
+            )
         elif wc > 2000:
-            warnings.append(f"System prompt is very long ({wc} words) — consider moving reference material to separate files")
+            warnings.append(
+                f"System prompt is very long ({wc} words) — consider moving reference material to separate files"
+            )
     else:
         if wc < 50:
-            warnings.append(f"System prompt is very short ({wc} words) — conversational agents typically need 200-800 words")
+            warnings.append(
+                f"System prompt is very short ({wc} words) — conversational agents typically need 200-800 words"
+            )
         elif wc > 1200:
-            warnings.append(f"System prompt is very long ({wc} words) — consider trimming or using references/")
+            warnings.append(
+                f"System prompt is very long ({wc} words) — consider trimming or using references/"
+            )
 
     return True, "Agent is valid!", warnings
 

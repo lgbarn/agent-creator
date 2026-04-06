@@ -49,12 +49,20 @@ def package_agent(agent_path: str, output_dir: str | None = None) -> str:
         "name": name,
         "description": data["description"],
         "version": "1.0.0",
-        "frontmatter": {k: v for k, v in data["frontmatter"].items()
-                       if k not in ("name", "description")},
+        "frontmatter": {
+            k: v
+            for k, v in data["frontmatter"].items()
+            if k not in ("name", "description")
+        },
         "dependencies": {
             "skills": data["frontmatter"].get("skills", []),
-            "mcp_servers": [s.get("name", str(s)) for s in data["frontmatter"].get("mcpServers", [])
-                          if isinstance(s, dict)] if data["frontmatter"].get("mcpServers") else [],
+            "mcp_servers": [
+                s.get("name", str(s))
+                for s in data["frontmatter"].get("mcpServers", [])
+                if isinstance(s, dict)
+            ]
+            if data["frontmatter"].get("mcpServers")
+            else [],
         },
     }
 

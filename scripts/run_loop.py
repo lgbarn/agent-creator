@@ -13,7 +13,6 @@ import argparse
 import json
 import shutil
 import sys
-import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -120,15 +119,25 @@ def run_loop(
 
         # Save iteration summary
         summary_path = iter_dir / "summary.json"
-        summary_path.write_text(json.dumps({
-            **iter_record,
-            "scenarios": [r.get("scenario_name", f"scenario-{i}") for i, r in enumerate(all_results)],
-        }, indent=2))
+        summary_path.write_text(
+            json.dumps(
+                {
+                    **iter_record,
+                    "scenarios": [
+                        r.get("scenario_name", f"scenario-{i}")
+                        for i, r in enumerate(all_results)
+                    ],
+                },
+                indent=2,
+            )
+        )
 
         # Check if all programmatic assertions pass
         if total_failed == 0 and total > 0:
             if verbose:
-                print(f"\nAll programmatic assertions pass! Stopping at iteration {iteration}.")
+                print(
+                    f"\nAll programmatic assertions pass! Stopping at iteration {iteration}."
+                )
             iter_record["exit_reason"] = "all_passed"
             break
 
@@ -143,7 +152,7 @@ def run_loop(
         # done by the caller (SKILL.md workflow or manual invocation).
         # This loop handles programmatic improvements.
         if verbose:
-            print(f"\n  Improving agent prompt...")
+            print("\n  Improving agent prompt...")
 
         try:
             import anthropic
@@ -158,7 +167,8 @@ def run_loop(
                         "turn": tr.get("turn", i + 1),
                         "user_message": tr.get("user_message", ""),
                         "assertions": [
-                            a for a in tr.get("assertions", [])
+                            a
+                            for a in tr.get("assertions", [])
                             if a["passed"] is not None
                         ],
                     }
@@ -203,7 +213,9 @@ def run_loop(
     # Final summary
     output = {
         "original_agent": str(original_path),
-        "best_agent": str(out / "best_agent.md") if best_iteration else str(original_path),
+        "best_agent": str(out / "best_agent.md")
+        if best_iteration
+        else str(original_path),
         "best_pass_rate": best_pass_rate,
         "best_iteration": best_iteration,
         "iterations_run": len(history),
@@ -214,8 +226,10 @@ def run_loop(
     output_path.write_text(json.dumps(output, indent=2))
 
     if verbose:
-        print(f"\nBest: iteration {best_iteration['iteration'] if best_iteration else 'N/A'} "
-              f"({best_pass_rate:.0%} pass rate)")
+        print(
+            f"\nBest: iteration {best_iteration['iteration'] if best_iteration else 'N/A'} "
+            f"({best_pass_rate:.0%} pass rate)"
+        )
         print(f"Results: {output_path}")
 
     return output
@@ -224,13 +238,27 @@ def run_loop(
 def main():
     parser = argparse.ArgumentParser(description="Iterative agent improvement loop")
     parser.add_argument("--agent", required=True, help="Path to agent .md file")
-    parser.add_argument("--scenarios", required=True, help="Path to test scenarios JSON")
-    parser.add_argument("--output-dir", required=True, help="Directory for iteration outputs")
-    parser.add_argument("--max-iterations", type=int, default=5, help="Max improvement iterations")
-    parser.add_argument("--model", default=None, help="Model for agent runs and improvement")
-    parser.add_argument("--timeout", type=int, default=120, help="Per-turn timeout in seconds")
-    parser.add_argument("--mode", default="behavior", choices=["behavior", "description"],
-                       help="What to improve: system prompt or description")
+    parser.add_argument(
+        "--scenarios", required=True, help="Path to test scenarios JSON"
+    )
+    parser.add_argument(
+        "--output-dir", required=True, help="Directory for iteration outputs"
+    )
+    parser.add_argument(
+        "--max-iterations", type=int, default=5, help="Max improvement iterations"
+    )
+    parser.add_argument(
+        "--model", default=None, help="Model for agent runs and improvement"
+    )
+    parser.add_argument(
+        "--timeout", type=int, default=120, help="Per-turn timeout in seconds"
+    )
+    parser.add_argument(
+        "--mode",
+        default="behavior",
+        choices=["behavior", "description"],
+        help="What to improve: system prompt or description",
+    )
     parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args()
 

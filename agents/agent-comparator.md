@@ -32,32 +32,37 @@ You receive these parameters in your prompt:
 3. Note the structure, length, and flow of each conversation
 4. Don't compare yet — just understand each on its own terms
 
-### Step 3: Generate Evaluation Rubric
+### Step 3: Generate Task-Specific Evaluation Rubric
 
-Based on the agent archetype and scenario, generate a rubric with these dimensions:
+Generate a rubric **tailored to this specific agent and scenario**, not a generic one. The rubric should reflect what matters for this particular agent's domain and task.
+
+Start with two mandatory dimensions, then add a third based on the agent archetype:
 
 **Behavioral Quality** (how well the agent embodies its role):
-| Criterion | 1 (Poor) | 3 (Acceptable) | 5 (Excellent) |
-|-----------|----------|----------------|---------------|
-| Persona Consistency | Breaks character, generic responses | Mostly in character | Fully consistent persona throughout |
-| Knowledge Depth | Surface-level, generic | Adequate domain knowledge | Deep, specific expertise shown |
-| Boundary Respect | Answers anything regardless of scope | Sometimes stays in scope | Clearly knows and respects its limits |
+Generate 3-5 criteria specific to this agent's domain. Examples of criteria to consider:
+- Persona Consistency (always relevant)
+- Domain-specific knowledge depth (e.g., "Go Idiom Correctness" for a Go expert, "Threat Model Accuracy" for a security advisor)
+- Boundary respect (relevant when the scenario tests out-of-scope requests)
+- Any domain-specific quality dimension (e.g., "Recipe Practicality" for a cooking agent)
 
 **Conversation Quality** (how well the agent communicates):
-| Criterion | 1 (Poor) | 3 (Acceptable) | 5 (Excellent) |
-|-----------|----------|----------------|---------------|
-| Relevance | Off-topic, misunderstands | Mostly on-topic | Directly addresses each query |
-| Helpfulness | Unhelpful, vague | Somewhat helpful | Genuinely useful responses |
-| Style Adherence | No consistent style | Partially matches intended style | Perfectly matches intended style |
+Generate 3-5 criteria based on the agent's intended style. Examples:
+- Relevance (always relevant)
+- Helpfulness (always relevant)
+- Style-specific criteria (e.g., "Socratic Questioning Quality" for a teaching agent, "Conciseness" for a direct-answer agent)
+- "Code Example Quality" for technical agents
+- "Empathy and Encouragement" for coaching agents
 
-**Task Completion** (for task agents only):
-| Criterion | 1 (Poor) | 3 (Acceptable) | 5 (Excellent) |
-|-----------|----------|----------------|---------------|
-| Accuracy | Major errors in output | Minor issues | Correct output |
-| Completeness | Missing key deliverables | Mostly complete | All deliverables present |
-| Tool Usage | Inappropriate tool choices | Reasonable tool use | Optimal, efficient tool use |
+**Task Completion** (for task agents only — omit for conversational agents):
+Generate 3-5 criteria based on what the task agent is supposed to produce:
+- Accuracy of output
+- Completeness of deliverables
+- Tool usage appropriateness
+- Domain-specific output quality (e.g., "Test Coverage" for a test generator, "Commit Message Quality" for a commit agent)
 
-Adapt criteria to the specific scenario. For conversational agents, weight Behavioral and Conversation quality equally. For task agents, weight Task Completion more heavily.
+For each criterion, define what 1 (Poor), 3 (Acceptable), and 5 (Excellent) look like **in the context of this specific agent**. Generic rubrics produce generic evaluations — make it specific.
+
+**Weighting**: For conversational agents, weight Behavioral and Conversation equally. For task agents, weight Task Completion more heavily (e.g., 40% Task, 30% Behavioral, 30% Conversation).
 
 ### Step 4: Evaluate Each Transcript
 

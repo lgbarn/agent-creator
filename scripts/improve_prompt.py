@@ -30,11 +30,15 @@ def improve_prompt(
     mode: str = "behavior",
     log_dir: Path | None = None,
     iteration: int | None = None,
+    feedback: list[dict] | None = None,
 ) -> dict:
     """Call Claude to improve the agent based on test results.
 
     Args:
         mode: "behavior" to improve system prompt, "description" to improve description
+        feedback: Structured feedback from eval-viewer (list of review dicts
+            with "run_id" and "feedback" fields). Human judgment augments
+            automated grading.
 
     Returns dict with:
         system_prompt: Improved system prompt text (if mode=behavior)
@@ -54,6 +58,15 @@ def improve_prompt(
         all_failures = _extract_failures(grading_results)
         all_notes = [grading_results.get("behavioral_notes", "")]
 
+    # Extract feedback text from structured feedback
+    feedback_texts = []
+    if feedback:
+        for review in feedback:
+            fb_text = review.get("feedback", "").strip()
+            if fb_text:
+                run_id = review.get("run_id", "unknown")
+                feedback_texts.append(f"[{run_id}] {fb_text}")
+
     if mode == "behavior":
         return _improve_system_prompt(
             client,
@@ -65,6 +78,7 @@ def improve_prompt(
             model,
             log_dir,
             iteration,
+            feedback_texts,
         )
     else:
         return _improve_description(
@@ -122,6 +136,7 @@ def _improve_system_prompt(
     model,
     log_dir,
     iteration,
+    feedback_texts=None,
 ) -> dict:
     """Improve the agent's system prompt based on behavioral failures."""
 
@@ -159,6 +174,14 @@ The agent was tested against behavioral scenarios and some assertions failed:
             if h.get("changes_summary"):
                 prompt += f"Changes: {h['changes_summary']}\n"
             prompt += "</attempt>\n\n"
+
+    if feedback_texts:
+        prompt += "<human_feedback>\n"
+        prompt += "The following feedback was provided by a human reviewer after watching the agent's behavior:\n\n"
+        for fb in feedback_texts:
+            prompt += f"- {fb}\n"
+        prompt += "\nHuman feedback takes priority over automated assertions. Address these concerns first.\n"
+        prompt += "</human_feedback>\n\n"
 
     prompt += """Based on the failures, improve the agent's system prompt. Focus on:
 

@@ -221,3 +221,138 @@ Saved when test runs complete.
   "total_duration_seconds": 23.3
 }
 ```
+
+---
+
+## Benchmark Schema
+
+Output from `aggregate_benchmark.py`. Aggregates results across multiple runs with statistical summaries.
+
+```json
+{
+  "metadata": {
+    "agent_name": "go-expert",
+    "agent_path": "/path/to/go-expert.md",
+    "timestamp": "2026-04-11T10:30:00Z",
+    "scenarios": ["basic-go-knowledge", "boundary-test"],
+    "configurations": ["train", "test"]
+  },
+  "runs": [
+    {
+      "scenario_name": "basic-go-knowledge",
+      "configuration": "train",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 0.85,
+        "passed": 6,
+        "failed": 1,
+        "total": 7,
+        "time_seconds": 42.5,
+        "tokens": 3800,
+        "tool_calls": 5
+      }
+    }
+  ],
+  "run_summary": {
+    "train": {
+      "pass_rate": {"mean": 0.85, "stddev": 0.05, "min": 0.80, "max": 0.90},
+      "time_seconds": {"mean": 45.0, "stddev": 12.0, "min": 33.0, "max": 57.0},
+      "tokens": {"mean": 3800, "stddev": 400, "min": 3400, "max": 4200},
+      "tool_calls": {"mean": 5.0, "stddev": 1.0, "min": 4, "max": 6},
+      "run_count": 3
+    },
+    "test": {
+      "pass_rate": {"mean": 0.75, "stddev": 0.10, "min": 0.65, "max": 0.85},
+      "time_seconds": {"mean": 38.0, "stddev": 8.0, "min": 30.0, "max": 46.0},
+      "tokens": {"mean": 3200, "stddev": 300, "min": 2900, "max": 3500},
+      "tool_calls": {"mean": 4.0, "stddev": 0.5, "min": 3, "max": 5},
+      "run_count": 3
+    },
+    "delta": {
+      "pass_rate": "+0.10",
+      "time_seconds": "+7.0",
+      "tokens": "+600"
+    }
+  },
+  "notes": [
+    "Assertion 'contains error' passes 100% in both configs - may not discriminate",
+    "Scenario 2 shows high variance (65%-85%) - may be flaky"
+  ]
+}
+```
+
+---
+
+## Feedback Schema
+
+Output from the eval-viewer when user submits feedback. Used by `improve_prompt.py` to incorporate human judgment into prompt improvement.
+
+```json
+{
+  "reviews": [
+    {
+      "run_id": "train-basic-go-knowledge",
+      "feedback": "The agent was too verbose — responses averaged 400 words when 150 would suffice for a domain expert",
+      "timestamp": "2026-04-11T12:30:00Z"
+    },
+    {
+      "run_id": "train-boundary-test",
+      "feedback": "",
+      "timestamp": "2026-04-11T12:31:00Z"
+    }
+  ],
+  "status": "complete"
+}
+```
+
+- **reviews**: Array of per-scenario feedback entries
+  - **run_id**: Identifier matching the eval viewer's run ID
+  - **feedback**: Free-form text from the reviewer. Empty string = no issues.
+  - **timestamp**: When the feedback was submitted
+- **status**: "complete" when all reviews are submitted
+
+**Usage**: Empty feedback means "looks good." Only non-empty feedback is passed to `improve_prompt.py`. Human feedback takes priority over automated assertion results.
+
+---
+
+## Claims Schema
+
+Extracted by the behavior-grader as part of grading results. Each claim is an implicit statement from the agent's response that may or may not be correct.
+
+```json
+{
+  "claim": "errors.Is was introduced in Go 1.13",
+  "type": "factual | process | quality",
+  "verified": true,
+  "evidence": "Correct — errors.Is/As and fmt.Errorf %w wrapping were added in Go 1.13"
+}
+```
+
+- **claim**: The statement being verified
+- **type**: Classification of the claim
+  - `factual`: A specific technical statement that can be checked
+  - `process`: A claim about what the agent did or will do
+  - `quality`: A self-assessment or implied quality claim
+- **verified**: Whether the claim holds up to scrutiny
+- **evidence**: Supporting or contradicting evidence
+
+---
+
+## Trigger Eval Set Schema
+
+Input for `run_trigger_eval.py` and the description optimization loop. Defines queries that should or should not trigger delegation to the agent.
+
+```json
+[
+  {
+    "query": "can you review this auth flow for security issues?",
+    "should_trigger": true
+  },
+  {
+    "query": "write a fibonacci function in Python",
+    "should_trigger": false
+  }
+]
+```
+
+Aim for 8-10 should-trigger and 8-10 should-not-trigger queries. Use the `assets/eval_review.html` template to review and edit queries in a browser before running the optimization loop.

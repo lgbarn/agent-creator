@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Agent Eval Viewer</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #fafafa; color: #1a1a1a; padding: 20px; }
+    h1 { font-size: 1.4rem; margin-bottom: 4px; }
+    .subtitle { color: #888; font-size: 0.85rem; margin-bottom: 16px; }
+    .tabs { display: flex; gap: 0; border-bottom: 2px solid #e5e5e5; margin-bottom: 20px; }
+    .tab { padding: 10px 20px; cursor: pointer; font-weight: 500; font-size: 0.9rem; border-bottom: 2px solid transparent; margin-bottom: -2px; color: #888; }
+    .tab.active { color: #1a1a1a; border-bottom-color: #1a1a1a; }
+    .tab:hover:not(.active) { color: #555; }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+
+    /* Nav */
+    .nav { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+    .nav-btn { padding: 6px 14px; border: 1px solid #ddd; border-radius: 6px; background: white; cursor: pointer; font-size: 0.85rem; }
+    .nav-btn:hover { background: #f5f5f5; }
+    .nav-btn:disabled { opacity: 0.4; cursor: default; }
+    .nav-info { color: #888; font-size: 0.85rem; }
+
+    /* Scenario card */
+    .scenario { background: white; border: 1px solid #e5e5e5; border-radius: 8px; padding: 20px; margin-bottom: 16px; }
+    .scenario-header { font-weight: 600; margin-bottom: 12px; font-size: 1rem; }
+    .turn { margin-bottom: 16px; padding-bottom: 16px; border-bottom: 1px solid #f0f0f0; }
+    .turn:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+    .turn-label { font-size: 0.75rem; color: #888; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
+    .turn-user { background: #f5f5f5; padding: 10px 14px; border-radius: 6px; margin-bottom: 8px; font-size: 0.9rem; }
+    .turn-response { padding: 10px 14px; border-left: 3px solid #e0e0e0; margin-bottom: 8px; font-size: 0.9rem; white-space: pre-wrap; word-break: break-word; max-height: 400px; overflow-y: auto; }
+    .turn-tools { font-size: 0.8rem; color: #666; }
+    .turn-tools span { background: #e8f5e9; color: #2d7d46; padding: 2px 6px; border-radius: 3px; margin-right: 4px; }
+
+    /* Assertions */
+    .assertions { margin-top: 8px; }
+    .assertion { display: flex; align-items: flex-start; gap: 8px; padding: 4px 0; font-size: 0.85rem; }
+    .assertion-icon { flex-shrink: 0; width: 18px; text-align: center; }
+    .assertion-pass { color: #2d7d46; }
+    .assertion-fail { color: #c44; }
+    .assertion-deferred { color: #d97706; }
+    .assertion-text { flex: 1; }
+    .assertion-type { font-size: 0.7rem; color: #888; background: #f0f0f0; padding: 1px 5px; border-radius: 3px; margin-left: 6px; }
+
+    /* Grading section */
+    .grading { background: #f9f9f9; border: 1px solid #eee; border-radius: 6px; padding: 14px; margin-top: 12px; }
+    .grading-header { font-weight: 600; font-size: 0.85rem; margin-bottom: 8px; cursor: pointer; }
+    .grading-header:hover { color: #555; }
+    .grading-body { display: none; }
+    .grading-body.open { display: block; }
+    .grading-summary { display: flex; gap: 16px; margin-bottom: 8px; font-size: 0.85rem; }
+    .grading-stat { }
+    .grading-stat strong { font-size: 1.1rem; }
+
+    /* Feedback */
+    .feedback-section { margin-top: 16px; }
+    .feedback-label { font-size: 0.8rem; color: #888; margin-bottom: 4px; }
+    .feedback-textarea { width: 100%; min-height: 80px; padding: 10px; border: 1px solid #ddd; border-radius: 6px; font-family: inherit; font-size: 0.9rem; resize: vertical; }
+    .feedback-textarea:focus { outline: none; border-color: #666; }
+    .previous-feedback { background: #fff8e1; border: 1px solid #ffe082; border-radius: 6px; padding: 10px 14px; margin-top: 8px; font-size: 0.85rem; }
+    .previous-feedback-label { font-size: 0.75rem; color: #d97706; font-weight: 600; margin-bottom: 4px; }
+
+    /* Benchmark tab */
+    .benchmark-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 20px; }
+    .bm-card { background: white; border: 1px solid #e5e5e5; border-radius: 8px; padding: 14px; }
+    .bm-label { font-size: 0.75rem; color: #888; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
+    .bm-value { font-size: 1.3rem; font-weight: 700; }
+    .bm-detail { font-size: 0.8rem; color: #888; margin-top: 2px; }
+    .notes-list { list-style: disc; padding-left: 20px; }
+    .notes-list li { margin-bottom: 6px; font-size: 0.9rem; }
+
+    /* Submit */
+    .submit-bar { position: sticky; bottom: 0; background: white; border-top: 1px solid #e5e5e5; padding: 12px 20px; margin: 0 -20px; display: flex; justify-content: space-between; align-items: center; }
+    .submit-btn { padding: 8px 20px; background: #1a1a1a; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 500; font-size: 0.9rem; }
+    .submit-btn:hover { background: #333; }
+    .submit-status { font-size: 0.85rem; color: #888; }
+    .save-ok { color: #2d7d46; }
+  </style>
+</head>
+<body>
+  <h1 id="header">Agent Eval Viewer</h1>
+  <p class="subtitle" id="subtitle"></p>
+
+  <div class="tabs">
+    <div class="tab active" data-tab="transcripts">Transcripts</div>
+    <div class="tab" data-tab="benchmark">Benchmark</div>
+  </div>
+
+  <div id="transcripts-tab" class="tab-content active">
+    <div class="nav">
+      <button class="nav-btn" id="prev-btn" onclick="prevScenario()">Prev</button>
+      <button class="nav-btn" id="next-btn" onclick="nextScenario()">Next</button>
+      <span class="nav-info" id="nav-info"></span>
+    </div>
+    <div id="scenario-container"></div>
+  </div>
+
+  <div id="benchmark-tab" class="tab-content">
+    <div id="benchmark-container">
+      <p style="color:#888">No benchmark data available. Run <code>aggregate_benchmark.py</code> first.</p>
+    </div>
+  </div>
+
+  <div class="submit-bar">
+    <span class="submit-status" id="submit-status"></span>
+    <button class="submit-btn" onclick="submitFeedback()">Submit All Reviews</button>
+  </div>
+
+  <script>
+    /*__EMBEDDED_DATA__*/
+
+    let currentIndex = 0;
+    const feedback = {};
+    let autoSaveTimer = null;
+
+    function init() {
+      const data = EMBEDDED_DATA;
+      document.getElementById('header').textContent = `Agent Eval Viewer — ${data.agent_name || 'Agent'}`;
+      document.getElementById('subtitle').textContent = `${data.runs.length} scenario(s)`;
+
+      // Load previous feedback
+      if (data.previous_feedback) {
+        for (const [id, fb] of Object.entries(data.previous_feedback)) {
+          feedback[id] = fb;
+        }
+      }
+
+      // Tab switching
+      document.querySelectorAll('.tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+          document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+          document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+          tab.classList.add('active');
+          document.getElementById(tab.dataset.tab + '-tab').classList.add('active');
+        });
+      });
+
+      if (data.benchmark) renderBenchmark(data.benchmark);
+      if (data.runs.length > 0) renderScenario(0);
+      updateNav();
+    }
+
+    function renderScenario(idx) {
+      currentIndex = idx;
+      const run = EMBEDDED_DATA.runs[idx];
+      const container = document.getElementById('scenario-container');
+
+      let html = `<div class="scenario">`;
+      html += `<div class="scenario-header">${escapeHtml(run.scenario_name || run.id || 'Scenario ' + (idx + 1))}</div>`;
+
+      // Turns
+      const turns = run.turns || [];
+      turns.forEach((turn, i) => {
+        html += `<div class="turn">`;
+        html += `<div class="turn-label">Turn ${i + 1}</div>`;
+        html += `<div class="turn-user">${escapeHtml(turn.user_message || '')}</div>`;
+        html += `<div class="turn-response">${escapeHtml(turn.response || '')}</div>`;
+
+        if (turn.tool_calls && turn.tool_calls.length > 0) {
+          html += `<div class="turn-tools">Tools: ${turn.tool_calls.map(t => `<span>${escapeHtml(t)}</span>`).join(' ')}</div>`;
+        }
+
+        // Assertions
+        if (turn.assertions && turn.assertions.length > 0) {
+          html += `<div class="assertions">`;
+          turn.assertions.forEach(a => {
+            const icon = a.passed === true ? '&#10003;' : a.passed === false ? '&#10007;' : '&#9679;';
+            const cls = a.passed === true ? 'assertion-pass' : a.passed === false ? 'assertion-fail' : 'assertion-deferred';
+            html += `<div class="assertion">`;
+            html += `<span class="assertion-icon ${cls}">${icon}</span>`;
+            html += `<span class="assertion-text">${escapeHtml(a.text || a.description || '')}<span class="assertion-type">${escapeHtml(a.type || '')}</span></span>`;
+            html += `</div>`;
+          });
+          html += `</div>`;
+        }
+
+        html += `</div>`;
+      });
+
+      // Grading (collapsible)
+      if (run.grading) {
+        const g = run.grading;
+        const summary = g.summary || {};
+        html += `<div class="grading">`;
+        html += `<div class="grading-header" onclick="this.nextElementSibling.classList.toggle('open')">Grading Results (click to expand)</div>`;
+        html += `<div class="grading-body">`;
+        html += `<div class="grading-summary">`;
+        html += `<div class="grading-stat"><strong>${summary.passed || 0}</strong> passed</div>`;
+        html += `<div class="grading-stat"><strong>${summary.failed || 0}</strong> failed</div>`;
+        html += `<div class="grading-stat"><strong>${(summary.pass_rate * 100 || 0).toFixed(0)}%</strong> pass rate</div>`;
+        html += `</div>`;
+
+        if (g.behavioral_notes) {
+          html += `<p style="font-size:0.85rem;margin-top:8px;color:#555">${escapeHtml(g.behavioral_notes)}</p>`;
+        }
+
+        // Claims
+        if (g.claims && g.claims.length > 0) {
+          html += `<div style="margin-top:10px"><strong style="font-size:0.8rem">Claims Extracted:</strong></div>`;
+          g.claims.forEach(c => {
+            const vIcon = c.verified ? '&#10003;' : '&#10007;';
+            const vCls = c.verified ? 'assertion-pass' : 'assertion-fail';
+            html += `<div class="assertion"><span class="assertion-icon ${vCls}">${vIcon}</span>`;
+            html += `<span class="assertion-text">${escapeHtml(c.claim)}<span class="assertion-type">${escapeHtml(c.type || '')}</span></span></div>`;
+          });
+        }
+
+        html += `</div></div>`;
+      }
+
+      // Feedback
+      const runId = run.id || `scenario-${idx}`;
+      const currentFb = feedback[runId] || '';
+      const prevFb = (EMBEDDED_DATA.previous_feedback || {})[runId] || '';
+
+      html += `<div class="feedback-section">`;
+      html += `<div class="feedback-label">Feedback</div>`;
+      html += `<textarea class="feedback-textarea" id="feedback-input" placeholder="What could be improved? (auto-saves)" oninput="onFeedbackChange('${escapeHtml(runId)}', this.value)">${escapeHtml(currentFb)}</textarea>`;
+
+      if (prevFb) {
+        html += `<div class="previous-feedback">`;
+        html += `<div class="previous-feedback-label">Previous Feedback</div>`;
+        html += escapeHtml(prevFb);
+        html += `</div>`;
+      }
+
+      html += `</div>`;
+      html += `</div>`;
+
+      container.innerHTML = html;
+      updateNav();
+    }
+
+    function renderBenchmark(bm) {
+      const container = document.getElementById('benchmark-container');
+      const summary = bm.run_summary || {};
+      const configs = Object.keys(summary).filter(k => k !== 'delta');
+      const delta = summary.delta || {};
+
+      let html = '<div class="benchmark-grid">';
+
+      configs.forEach(config => {
+        const s = summary[config] || {};
+        const pr = s.pass_rate || {};
+        const t = s.time_seconds || {};
+        const label = config.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+
+        html += `<div class="bm-card">`;
+        html += `<div class="bm-label">${escapeHtml(label)} Pass Rate</div>`;
+        html += `<div class="bm-value">${((pr.mean || 0) * 100).toFixed(0)}%</div>`;
+        html += `<div class="bm-detail">&plusmn; ${((pr.stddev || 0) * 100).toFixed(0)}% (${s.run_count || 0} runs)</div>`;
+        html += `</div>`;
+
+        html += `<div class="bm-card">`;
+        html += `<div class="bm-label">${escapeHtml(label)} Time</div>`;
+        html += `<div class="bm-value">${(t.mean || 0).toFixed(1)}s</div>`;
+        html += `<div class="bm-detail">&plusmn; ${(t.stddev || 0).toFixed(1)}s</div>`;
+        html += `</div>`;
+      });
+
+      if (delta.pass_rate) {
+        html += `<div class="bm-card">`;
+        html += `<div class="bm-label">Delta (Pass Rate)</div>`;
+        html += `<div class="bm-value">${escapeHtml(delta.pass_rate)}</div>`;
+        html += `</div>`;
+      }
+
+      html += '</div>';
+
+      // Notes
+      if (bm.notes && bm.notes.length > 0) {
+        html += '<h3 style="margin:16px 0 8px;font-size:1rem">Analyst Notes</h3>';
+        html += '<ul class="notes-list">';
+        bm.notes.forEach(n => {
+          html += `<li>${escapeHtml(n)}</li>`;
+        });
+        html += '</ul>';
+      }
+
+      container.innerHTML = html;
+    }
+
+    function prevScenario() {
+      if (currentIndex > 0) renderScenario(currentIndex - 1);
+    }
+
+    function nextScenario() {
+      if (currentIndex < EMBEDDED_DATA.runs.length - 1) renderScenario(currentIndex + 1);
+    }
+
+    function updateNav() {
+      const total = EMBEDDED_DATA.runs.length;
+      document.getElementById('prev-btn').disabled = currentIndex <= 0;
+      document.getElementById('next-btn').disabled = currentIndex >= total - 1;
+      document.getElementById('nav-info').textContent = `${currentIndex + 1} of ${total}`;
+    }
+
+    function onFeedbackChange(runId, value) {
+      feedback[runId] = value;
+      clearTimeout(autoSaveTimer);
+      autoSaveTimer = setTimeout(() => autoSave(), 2000);
+    }
+
+    function autoSave() {
+      const data = buildFeedbackJson();
+      fetch('/api/feedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      }).then(r => {
+        if (r.ok) {
+          document.getElementById('submit-status').innerHTML = '<span class="save-ok">Auto-saved</span>';
+          setTimeout(() => { document.getElementById('submit-status').textContent = ''; }, 3000);
+        }
+      }).catch(() => {});
+    }
+
+    function submitFeedback() {
+      const data = buildFeedbackJson();
+
+      // Try server save first
+      fetch('/api/feedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      }).then(r => {
+        if (r.ok) {
+          document.getElementById('submit-status').innerHTML = '<span class="save-ok">Feedback saved!</span>';
+        }
+      }).catch(() => {
+        // Fallback: download as file
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'feedback.json';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        document.getElementById('submit-status').innerHTML = '<span class="save-ok">Downloaded feedback.json</span>';
+      });
+    }
+
+    function buildFeedbackJson() {
+      const reviews = [];
+      for (const [runId, fb] of Object.entries(feedback)) {
+        reviews.push({
+          run_id: runId,
+          feedback: fb,
+          timestamp: new Date().toISOString(),
+        });
+      }
+      return { reviews, status: 'complete' };
+    }
+
+    function escapeHtml(text) {
+      if (!text) return '';
+      const div = document.createElement('div');
+      div.textContent = String(text);
+      return div.innerHTML;
+    }
+
+    init();
+  </script>
+</body>
+</html>

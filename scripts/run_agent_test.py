@@ -339,6 +339,80 @@ def run_scenario(
     return raw_results
 
 
+def run_scenario_multiple(
+    scenario: dict,
+    output_dir: str,
+    runs: int = 1,
+    timeout: int = 120,
+    model: str | None = None,
+) -> list[dict]:
+    """Run a scenario multiple times for statistical reliability.
+
+    When runs > 1, results are placed in run-1/, run-2/, etc. subdirectories.
+    When runs == 1, results are placed directly in output_dir (backward compatible).
+
+    Returns list of result dicts, one per run.
+    """
+    if runs <= 1:
+        result = run_scenario(
+            scenario, output_dir=output_dir, timeout=timeout, model=model
+        )
+        return [result]
+
+    results = []
+    for run_idx in range(1, runs + 1):
+        run_dir = os.path.join(output_dir, f"run-{run_idx}")
+        print(f"  [Run {run_idx}/{runs}]")
+        result = run_scenario(
+            scenario, output_dir=run_dir, timeout=timeout, model=model
+        )
+        results.append(result)
+
+    # Write aggregate summary across runs
+    out_path = Path(output_dir)
+    out_path.mkdir(parents=True, exist_ok=True)
+
+    all_passed = 0
+    all_failed = 0
+    all_total = 0
+    for r in results:
+        for tr in r.get("turn_results", []):
+            for a in tr.get("assertions", []):
+                if a.get("passed") is True:
+                    all_passed += 1
+                elif a.get("passed") is False:
+                    all_failed += 1
+        all_total += 1
+
+    total_assertions = all_passed + all_failed
+    aggregate = {
+        "scenario_name": scenario.get("name", "unnamed"),
+        "runs": runs,
+        "aggregate": {
+            "passed": all_passed,
+            "failed": all_failed,
+            "total_assertions": total_assertions,
+            "pass_rate": all_passed / total_assertions if total_assertions > 0 else 0.0,
+            "per_run_pass_rates": [],
+        },
+    }
+
+    for r in results:
+        p = 0
+        f = 0
+        for tr in r.get("turn_results", []):
+            for a in tr.get("assertions", []):
+                if a.get("passed") is True:
+                    p += 1
+                elif a.get("passed") is False:
+                    f += 1
+        t = p + f
+        aggregate["aggregate"]["per_run_pass_rates"].append(p / t if t > 0 else 0.0)
+
+    (out_path / "aggregate.json").write_text(json.dumps(aggregate, indent=2))
+    return results
+
+
 def main():
     parser = argparse.ArgumentParser(description="Run agent test scenarios")
     parser.add_argument("--agent", required=True, help="Agent name or path to .md file")
@@ -350,6 +424,12 @@ def main():
         "--timeout", type=int, default=120, help="Per-turn timeout in seconds"
     )
     parser.add_argument("--model", default=None, help="Override model for the agent")
+    parser.add_argument(
+        "--runs",
+        type=int,
+        default=1,
+        help="Number of times to run each scenario (default: 1, use 3+ for statistical reliability)",
+    )
     args = parser.parse_args()
 
     # Resolve agent
@@ -366,16 +446,21 @@ def main():
     for i, scenario in enumerate(scenarios):
         scenario_name = scenario.get("name", f"scenario-{i}")
         scenario_dir = os.path.join(args.output_dir, scenario_name)
-        result = run_scenario(
+        results = run_scenario_multiple(
             scenario,
             output_dir=scenario_dir,
+            runs=args.runs,
             timeout=args.timeout,
             model=args.model,
         )
-        all_results.append(result)
+        all_results.extend(results)
 
     # Summary
-    print(f"\nCompleted {len(all_results)} scenario(s)")
+    total_scenarios = len(scenarios)
+    total_runs = len(all_results)
+    print(
+        f"\nCompleted {total_scenarios} scenario(s) x {args.runs} run(s) = {total_runs} total run(s)"
+    )
     print(f"Results in: {args.output_dir}")
 
 

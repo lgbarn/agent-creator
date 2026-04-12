@@ -190,8 +190,11 @@ Each scenario has:
 python <plugin-root>/scripts/run_agent_test.py \
   --agent <agent-name-or-path> \
   --scenario <scenario.json> \
-  --output-dir <workspace>/iteration-1/
+  --output-dir <workspace>/iteration-1/ \
+  --runs 3
 ```
+
+The `--runs` flag runs each scenario N times for statistical reliability (default 1, use 3+ for benchmarking). Results go into `run-1/`, `run-2/`, etc. subdirectories with an `aggregate.json` summary.
 
 Review the transcript and assertion results. For behavioral assertions that need judgment-based grading, spawn the behavior-grader agent:
 
@@ -199,6 +202,24 @@ Read `agents/behavior-grader.md` for the grader's instructions. Spawn it with:
 - `transcript_path`: path to the generated transcript.md
 - `scenario_path`: path to the test scenario JSON
 - `output_path`: where to write grading.json
+
+The grader now also:
+- **Extracts and verifies claims**: Identifies factual, process, and quality claims from agent responses and checks them for accuracy. Catches hallucination and confabulation that assertions alone miss.
+- **Critiques the test scenario**: Flags assertions that are trivially satisfied, non-discriminating, or missing important behavioral coverage.
+
+**Review results interactively:**
+```bash
+python <plugin-root>/eval-viewer/generate_review.py <workspace>/iteration-1/ \
+  --agent-name <name>
+```
+
+This launches a browser-based viewer showing each scenario's multi-turn transcript, assertions, grading results, and extracted claims. You can:
+- Navigate between scenarios with prev/next
+- Write feedback for each scenario (auto-saves)
+- View the Benchmark tab when aggregate data is available
+- Export feedback as `feedback.json` for the improvement loop
+
+For environments without a browser, use `--static report.html` to write a standalone HTML file.
 
 ### Step 8: Iterate and Improve
 
@@ -214,6 +235,7 @@ python <plugin-root>/scripts/run_loop.py \
   --output-dir <workspace>/ \
   --max-iterations 5 \
   --holdout 0.3 \
+  --runs 3 \
   --model sonnet \
   --verbose
 ```
@@ -221,11 +243,33 @@ python <plugin-root>/scripts/run_loop.py \
 This runs the test-improve cycle automatically: test → identify failures → use Claude to improve the prompt → re-test → repeat. It saves the best-performing version.
 
 Key flags:
-- `--holdout 0.3`: Hold out 30% of scenarios as a test set. The improvement loop only sees train results, preventing overfitting to specific test cases. Best version is selected by test score.
-- `--no-baseline`: Skip running the original agent for comparison (on by default). Baseline runs give you a delta showing how much each iteration improved over the original.
+- `--holdout 0.3`: Hold out 30% of scenarios as a test set. Prevents overfitting. Best version is selected by test score.
+- `--runs 3`: Run each scenario 3 times per iteration for statistical reliability.
+- `--no-baseline`: Skip running the original agent for comparison (on by default). Baseline runs give you a delta showing improvement.
+
+**Feedback integration**: If `feedback.json` exists in the output directory (from the eval viewer), the improvement loop automatically incorporates human feedback. Human judgment takes priority over automated assertions — this is the recommended workflow:
+
+1. Run one iteration of the loop
+2. Open the eval viewer: `python <plugin-root>/eval-viewer/generate_review.py <workspace>/iteration-1/`
+3. Write feedback on problematic scenarios
+4. Re-run the loop — it picks up feedback.json automatically
+
+**Generate HTML reports** to visualize progress across iterations:
+```bash
+python <plugin-root>/scripts/generate_report.py <workspace>/loop_results.json -o report.html
+```
+
+For live monitoring during active loops, add `--auto-refresh` — the page reloads every 10 seconds.
+
+**Aggregate benchmark statistics** across multiple runs:
+```bash
+python <plugin-root>/scripts/aggregate_benchmark.py <workspace>/ --agent-name <name>
+```
+
+Produces `benchmark.json` and `benchmark.md` with mean±stddev for pass rates, timing, and token usage. Feed this into the eval viewer's Benchmark tab.
 
 **For deeper analysis**, use the evaluation agents:
-- **agent-comparator** (`agents/agent-comparator.md`): Blind A/B comparison of two agent versions on the same scenarios
+- **agent-comparator** (`agents/agent-comparator.md`): Blind A/B comparison of two agent versions. Generates a **task-specific evaluation rubric** tailored to the agent's domain (not a generic rubric), then scores both versions.
 - **agent-analyzer** (`agents/agent-analyzer.md`): Post-hoc analysis of why one version performed better, with prioritized improvement suggestions
 
 **For trigger testing** (agents using `<example>` blocks for auto-delegation):
@@ -236,6 +280,13 @@ python <plugin-root>/scripts/run_trigger_eval.py \
   --runs-per-query 3 \
   --verbose
 ```
+
+**For trigger eval review** (reviewing/editing queries before running optimization):
+1. Read the template at `<plugin-root>/assets/eval_review.html`
+2. Replace `__AGENT_NAME_PLACEHOLDER__` with the agent name
+3. Replace `__AGENT_DESCRIPTION_PLACEHOLDER__` with the current description
+4. Replace `__EVAL_DATA_PLACEHOLDER__` with the JSON eval set array
+5. Open in browser — user can add/remove queries, toggle should_trigger, and export the modified `eval_set.json`
 
 The trigger eval set is a JSON array of queries with `should_trigger` flags:
 ```json
@@ -271,12 +322,27 @@ All scripts are in `<plugin-root>/scripts/`:
 | Script | Purpose | Usage |
 |--------|---------|-------|
 | `validate_agent.py` | Validate agent .md file structure and fields | `python scripts/validate_agent.py <agent.md>` |
-| `run_agent_test.py` | Run test scenarios and capture transcripts | `python scripts/run_agent_test.py --agent <name> --scenario <file> --output-dir <dir>` |
-| `run_loop.py` | Iterative test-improve cycle with train/test split + baseline | `python scripts/run_loop.py --agent <path> --scenarios <file> --output-dir <dir> --holdout 0.3` |
+| `run_agent_test.py` | Run test scenarios and capture transcripts | `python scripts/run_agent_test.py --agent <name> --scenario <file> --output-dir <dir> --runs 3` |
+| `run_loop.py` | Iterative test-improve cycle with train/test split, baseline, feedback | `python scripts/run_loop.py --agent <path> --scenarios <file> --output-dir <dir> --holdout 0.3 --runs 3` |
 | `run_trigger_eval.py` | Test agent description triggering accuracy | `python scripts/run_trigger_eval.py --agent <path> --eval-set <file>` |
-| `improve_prompt.py` | Improve system prompt using Claude + extended thinking | `python scripts/improve_prompt.py --agent <path> --grading <file> --model <model>` |
+| `improve_prompt.py` | Improve system prompt using Claude + extended thinking + feedback | `python scripts/improve_prompt.py --agent <path> --grading <file> --model <model>` |
+| `aggregate_benchmark.py` | Aggregate results into benchmark.json with mean±stddev | `python scripts/aggregate_benchmark.py <workspace> --agent-name <name>` |
+| `generate_report.py` | Generate visual HTML report of improvement loop progress | `python scripts/generate_report.py <loop_results.json> -o report.html` |
 | `package_agent.py` | Package agent into distributable .agent archive | `python scripts/package_agent.py <agent.md> [output-dir]` |
 | `utils.py` | Shared parsing utilities (imported by other scripts) | — |
+
+**Eval viewer** (in `<plugin-root>/eval-viewer/`):
+
+| Script | Purpose | Usage |
+|--------|---------|-------|
+| `generate_review.py` | Interactive browser-based transcript viewer with feedback collection | `python eval-viewer/generate_review.py <workspace> --agent-name <name>` |
+| `viewer.html` | HTML template for the eval viewer (embedded data, no external deps) | Used by `generate_review.py` |
+
+**Assets** (in `<plugin-root>/assets/`):
+
+| File | Purpose | Usage |
+|------|---------|-------|
+| `eval_review.html` | Template for reviewing/editing trigger eval queries in browser | Replace placeholders, open in browser, export eval_set.json |
 
 ## Evaluation Agents
 
@@ -284,6 +350,6 @@ Located in `<plugin-root>/agents/`:
 
 | Agent | Role | When to use |
 |-------|------|-------------|
-| `behavior-grader.md` | Grade transcripts against behavioral assertions | After running tests — evaluates persona, boundaries, style |
-| `agent-comparator.md` | Blind A/B comparison of two agent versions | When comparing before/after an improvement |
+| `behavior-grader.md` | Grade transcripts against behavioral assertions, extract claims, critique evals | After running tests — evaluates persona, boundaries, style, catches hallucination |
+| `agent-comparator.md` | Blind A/B comparison with dynamic task-specific rubrics | When comparing before/after an improvement |
 | `agent-analyzer.md` | Post-hoc analysis with improvement suggestions | After comparison — extracts actionable changes |

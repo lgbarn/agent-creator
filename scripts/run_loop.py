@@ -80,22 +80,52 @@ def _run_scenarios(
     output_dir: Path,
     timeout: int,
     model: str | None,
+    runs_per_scenario: int = 1,
 ) -> list[dict]:
-    """Run a list of scenarios and return results."""
-    from scripts.run_agent_test import run_scenario
+    """Run a list of scenarios and return results.
+
+    When runs_per_scenario > 1, each scenario runs multiple times for
+    statistical reliability.
+    """
+    from scripts.run_agent_test import run_scenario, run_scenario_multiple
 
     results = []
     for i, scenario in enumerate(scenarios):
         scenario_name = scenario.get("name", f"scenario-{i}")
         scenario_dir = str(output_dir / scenario_name)
-        result = run_scenario(
-            scenario,
-            output_dir=scenario_dir,
-            timeout=timeout,
-            model=model,
-        )
-        results.append(result)
+        if runs_per_scenario > 1:
+            run_results = run_scenario_multiple(
+                scenario,
+                output_dir=scenario_dir,
+                runs=runs_per_scenario,
+                timeout=timeout,
+                model=model,
+            )
+            # Use the first run's result for assertion tracking,
+            # but store all results for benchmark aggregation
+            results.append(run_results[0])
+        else:
+            result = run_scenario(
+                scenario,
+                output_dir=scenario_dir,
+                timeout=timeout,
+                model=model,
+            )
+            results.append(result)
     return results
+
+
+def _load_feedback(output_dir: Path) -> list[dict]:
+    """Load structured feedback from feedback.json if present."""
+    feedback_path = output_dir / "feedback.json"
+    if not feedback_path.exists():
+        return []
+
+    try:
+        data = json.loads(feedback_path.read_text())
+        return data.get("reviews", [])
+    except (json.JSONDecodeError, OSError):
+        return []
 
 
 def run_loop(
@@ -109,6 +139,7 @@ def run_loop(
     mode: str = "behavior",
     holdout: float = 0.0,
     run_baseline: bool = True,
+    runs_per_scenario: int = 1,
 ) -> dict:
     """Run the iterative test-improve cycle.
 
@@ -117,6 +148,8 @@ def run_loop(
             Prevents overfitting by evaluating improvements on unseen scenarios.
         run_baseline: If True, run the original agent on the same scenarios
             each iteration for comparison.
+        runs_per_scenario: Number of times to run each scenario per iteration
+            (default 1, use 3+ for statistical reliability).
 
     Returns dict with iteration history and best result.
     """
@@ -156,7 +189,9 @@ def run_loop(
             print(f"{'=' * 60}")
 
         baseline_dir = out / "baseline"
-        baseline_results = _run_scenarios(train_scenarios, baseline_dir, timeout, model)
+        baseline_results = _run_scenarios(
+            train_scenarios, baseline_dir, timeout, model, runs_per_scenario
+        )
         baseline_stats = _collect_assertion_stats(baseline_results)
 
         if verbose:
@@ -184,7 +219,9 @@ def run_loop(
 
         # Step 1: Run train scenarios with current agent
         train_dir = iter_dir / "train"
-        train_results = _run_scenarios(train_scenarios, train_dir, timeout, model)
+        train_results = _run_scenarios(
+            train_scenarios, train_dir, timeout, model, runs_per_scenario
+        )
         train_stats = _collect_assertion_stats(train_results)
 
         if verbose:
@@ -197,7 +234,9 @@ def run_loop(
         test_stats: dict | None = None
         if test_scenarios:
             test_dir = iter_dir / "test"
-            test_results = _run_scenarios(test_scenarios, test_dir, timeout, model)
+            test_results = _run_scenarios(
+                test_scenarios, test_dir, timeout, model, runs_per_scenario
+            )
             test_stats = _collect_assertion_stats(test_results)
 
             if verbose:
@@ -291,6 +330,9 @@ def run_loop(
                 "behavioral_notes": "",
             }
 
+            # Load user feedback if available
+            feedback = _load_feedback(out)
+
             agent_data = parse_agent_md(Path(current_agent_path))
             improvement = improve_prompt(
                 client=client,
@@ -305,6 +347,7 @@ def run_loop(
                 mode=mode,
                 log_dir=iter_dir / "logs",
                 iteration=iteration,
+                feedback=feedback,
             )
 
             if improvement.get("improved_content"):
@@ -388,6 +431,12 @@ def main():
         action="store_true",
         help="Skip baseline runs (original agent comparison)",
     )
+    parser.add_argument(
+        "--runs",
+        type=int,
+        default=1,
+        help="Number of times to run each scenario per iteration (default: 1, use 3+ for statistical reliability)",
+    )
     parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args()
 
@@ -402,6 +451,7 @@ def main():
         mode=args.mode,
         holdout=args.holdout,
         run_baseline=not args.no_baseline,
+        runs_per_scenario=args.runs,
     )
 
     print(json.dumps(result, indent=2))

@@ -59,7 +59,28 @@ Global assertions apply across the entire conversation:
 - **tool_restriction**: Did the agent only use tools it should have access to? Check every tool call in the transcript
 - **turn_count**: For task agents — did the agent complete within the expected number of turns?
 
-### Step 5: Write Behavioral Notes
+### Step 5: Extract and Verify Claims
+
+Beyond the predefined assertions, extract implicit claims from the agent's responses and verify them. This catches hallucination, confabulation, and quality issues that assertions alone miss.
+
+1. **Extract claims** from each agent response:
+   - **Factual claims**: Specific technical statements ("Go's error interface has one method"), API references, library names, version numbers
+   - **Process claims**: Descriptions of what the agent did or plans to do ("I'll check the error handling patterns in your code")
+   - **Quality claims**: Self-assessments or implied quality ("this is the idiomatic way to...")
+
+2. **Verify each claim**:
+   - **Factual claims**: Cross-reference with your knowledge. Flag statements that are incorrect or unverifiable.
+   - **Process claims**: Check the transcript — did the agent actually do what it said?
+   - **Quality claims**: Evaluate whether the claim is justified by the actual response content.
+
+3. **Flag unverifiable claims**: Note claims that cannot be verified with available information. These aren't failures, but they reduce confidence.
+
+This catches issues like:
+- Agent recommends a function that doesn't exist
+- Agent claims to have read a file but the transcript shows no Read tool call
+- Agent states something technically incorrect but no assertion was written for it
+
+### Step 6: Write Behavioral Notes
 
 Beyond the formal assertions, write free-form observations about the agent's behavior quality:
 - Was the agent engaging or robotic?
@@ -69,15 +90,21 @@ Beyond the formal assertions, write free-form observations about the agent's beh
 
 These notes help the agent creator understand qualitative aspects that assertions don't capture.
 
-### Step 6: Critique the Test Scenario
+### Step 7: Critique the Test Scenario
 
-Consider whether the assertions are actually testing what matters:
-- Are any assertions trivially satisfied regardless of agent quality?
-- Are there important behavioral aspects that no assertion covers?
-- Would a bad agent pass these assertions?
-- Are behavioral assertions specific enough to be meaningful?
+Consider whether the assertions are actually testing what matters. Only surface suggestions when there's a clear gap — keep the bar high.
 
-### Step 7: Write Grading Results
+Good suggestions test meaningful outcomes — assertions that are hard to satisfy without the agent actually behaving correctly. Think about what makes an assertion *discriminating*: it passes when the agent genuinely succeeds and fails when it doesn't.
+
+Suggestions worth raising:
+- An assertion that passed but would also pass for a clearly bad agent (e.g., "contains error" passes for any response mentioning the word "error" — consider checking for specific patterns like `errors.Is` or `fmt.Errorf`)
+- An important behavioral outcome you observed — good or bad — that no assertion covers at all
+- An assertion that can't actually be verified from the transcript content
+- A non-discriminating assertion that passes at the same rate regardless of agent quality
+
+Keep the bar high. The goal is to flag things the agent creator would say "good catch" about, not to nitpick every assertion.
+
+### Step 8: Write Grading Results
 
 Save results to `{output_path}`.
 
@@ -134,13 +161,37 @@ Save results to `{output_path}`.
     "pass_rate": 1.0
   },
   "behavioral_notes": "Agent demonstrated strong Go expertise with idiomatic code examples. Communication style was consistently direct and code-first. When asked about Python, agent appropriately redirected to Go alternatives rather than helping with Python directly. One observation: the agent could be more concise — responses averaged ~400 words which is on the long side for a domain expert.",
+  "claims": [
+    {
+      "claim": "errors.Is was introduced in Go 1.13",
+      "type": "factual",
+      "verified": true,
+      "evidence": "Correct — errors.Is/As and fmt.Errorf %w wrapping were added in Go 1.13"
+    },
+    {
+      "claim": "You should always use fmt.Errorf with %w for error wrapping",
+      "type": "quality",
+      "verified": false,
+      "evidence": "Overgeneralization — %w exposes the wrapped error to callers via errors.Is/As. Sometimes you want to hide the underlying error with %v instead, to avoid coupling."
+    },
+    {
+      "claim": "I'll check the concurrency patterns in your code",
+      "type": "process",
+      "verified": false,
+      "evidence": "Agent stated this but transcript shows no Read or Grep tool calls — the agent never actually examined any code"
+    }
+  ],
   "scenario_feedback": {
     "suggestions": [
       {
+        "assertion": "Should discuss Go errors",
         "reason": "The 'contains error' assertion would pass for any response that mentions the word 'error' — consider checking for specific Go error patterns like 'errors.Is' or 'fmt.Errorf'"
+      },
+      {
+        "reason": "No assertion checks whether code examples actually compile or follow Go conventions — observed a minor syntax error in the goroutine example that went uncaught"
       }
     ],
-    "overall": "Good coverage of persona and boundaries. Consider adding an assertion for response length/conciseness."
+    "overall": "Good coverage of persona and boundaries. Consider adding assertions for response length/conciseness and code example correctness."
   }
 }
 ```

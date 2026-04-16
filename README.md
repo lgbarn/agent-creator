@@ -6,16 +6,19 @@ Agents are markdown files with YAML frontmatter that define a specialized Claude
 
 ## Installation
 
-Install via Claude Code marketplace:
+Add the marketplace and install the plugin:
 
 ```bash
-claude install lgbarn/agent-creator
+claude plugin marketplace add lgbarn/agent-creator
+claude plugin install agent-creator@lgbarn/agent-creator
 ```
 
-Or manually — clone the repo into your Claude plugins directory:
+Or install from a local clone:
 
 ```bash
-git clone https://github.com/lgbarn/agent-creator.git ~/.claude/plugins/marketplaces/agent-creator
+git clone https://github.com/lgbarn/agent-creator.git
+claude plugin marketplace add ./agent-creator
+claude plugin install agent-creator@agent-creator
 ```
 
 ## Usage

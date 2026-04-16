@@ -1,0 +1,40 @@
+{
+  "name": "@lgbarn/agent-creator",
+  "version": "2.0.0",
+  "description": "Claude Code plugin for building, testing, and iteratively improving custom agents",
+  "keywords": [
+    "claude-code-plugin",
+    "agents",
+    "testing",
+    "evaluation",
+    "prompt-engineering",
+    "iterative-improvement"
+  ],
+  "author": "lgbarn",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/lgbarn/agent-creator.git"
+  },
+  "homepage": "https://github.com/lgbarn/agent-creator",
+  "bugs": {
+    "url": "https://github.com/lgbarn/agent-creator/issues"
+  },
+  "systemDependencies": {
+    "python": ">=3.12"
+  },
+  "files": [
+    ".claude-plugin/",
+    "agents/",
+    "skills/",
+    "scripts/",
+    "evals/",
+    "eval-viewer/",
+    "assets/",
+    "references/",
+    "README.md",
+    "SCRIPTS.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ]
+}

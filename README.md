@@ -10,7 +10,7 @@ Add the marketplace and install the plugin:
 
 ```bash
 claude plugin marketplace add lgbarn/agent-creator
-claude plugin install agent-creator@lgbarn/agent-creator
+claude plugin install agent-creator@agent-creator
 ```
 
 Or install from a local clone:
